@@ -58,7 +58,7 @@ for filename in *.new; do
     [ $? -ne 0 ] && echo "-- ERROR: Could not checkout tag $tag" && DID_ERR=1 && continue
 
     # write commit comment to tempfile
-    git log -1 --pretty=%B > $tempCommentFile
+    git log -1 --pretty=%b > $tempCommentFile
 
     # set ENV VARS
     export TYPO3_EXTENSION_DIR=$tempDir
