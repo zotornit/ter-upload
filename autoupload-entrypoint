@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# This script looks for *.new files and extracts the json values.
+# After that it clones the repository and checkout the tag
+# Thn "run once" docker container is started which uploads the extension
+# When successful, everything is removed. On error log is written/email sent.
+
+SCRIPTPATH="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+
+# param #1 is DATA dir
+DATA_DIR="${WH_WORK_DIR:-$1}"
+
+[ -z "$DATA_DIR" ] && echo "Data dir not set: Set with first 'arg' or envvar WH_WORK_DIR" && exit 1;
+[ ! -d "$DATA_DIR" ] && echo "Data dir is not a directory" && exit 1;
+
+cd $DATA_DIR
+
+DID_ERR=0
+
+echo ""
+echo "Start parsing files in $DATA_DIR ..."
+
+for filename in *.new; do
+
+    cd $DATA_DIR
+
+    # skip current loop when anything goes wrong
+    [[ -e "$filename" ]] || continue
+    [[ ! -d "$filename" ]] || continue
+
+    echo ""
+    echo "Parsing file $filename"
+
+    # skip loop when, type is not 'tag'
+    type=$(cat $filename | jq -r '.type');
+    [[ $type != "tag" ]] && echo "-- SKIP: Not type tag" && continue
+
+    # gain required information
+    tag=$(cat $filename | jq -r '.tag')
+    [ "$tag" = null ] && echo "-- ERROR: '.tag' not found in $filename" && DID_ERR=1 && continue
+    url=$(cat $filename | jq -r '.url');
+    [ "$url" = null ] && echo "-- ERROR: '.url' not found $filename" && DID_ERR=1 && continue
+    fullname=$(cat $filename | jq -r '.fullname')
+    [ "$fullname" = null ] && echo "-- ERROR: '.fullname' not found $filename" && DID_ERR=1 && continue
+    host=$(cat $filename | jq -r '.host')
+    [ "$host" = null ] && echo "-- ERROR: '.host' not found $filename" && DID_ERR=1 && continue
+
+    tempDir=$(mktemp -d)
+    tempCommentFile=$(mktemp)
+
+    # clone
+    git clone -q $url $tempDir &> /dev/null
+    [ $? -ne 0 ] && echo "-- ERROR: Could not clone repository $url" && DID_ERR=1 && continue
+
+    # checkout tag
+    cd $tempDir
+    git checkout -q "$tag" &> /dev/null
+    [ $? -ne 0 ] && echo "-- ERROR: Could not checkout tag $tag" && DID_ERR=1 && continue
+
+    # write commit comment to tempfile
+    git log -1 --pretty=%B > $tempCommentFile
+
+    # set ENV VARS
+    export TYPO3_EXTENSION_DIR=$tempDir
+    export TYPO3_UPLOAD_COMMENT_FILE=$tempCommentFile
+
+    # upload extension
+    cd /upload
+    upload
+    if [ $? -eq 0 ]; then
+        echo "Processing of TAG $tag for $host$fullname $url finished"
+    else
+        echo "-- ERROR: Could not process: TAG $tag for $host/$fullname $url"
+        DID_ERR=1
+    fi
+
+    # clean up
+    rm -r $tempDir
+    rm $tempCommentFile
+    rm $DATA_DIR/$filename
+
+done
+
+cd $SCRIPTPATH
+
+echo ""
+
+if [ $DID_ERR -eq 0 ]; then
+    echo "Finish parsing - ALL GOOD"
+    exit 0
+else
+    echo "Finished parsing with errors"
+    exit 1
+fi
