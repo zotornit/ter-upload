@@ -1,0 +1,9 @@
+FROM php:7.4-apache
+
+COPY ./webhook /var/www/html
+
+ENV WH_WORK_DIR  "/var/webhook/data"
+
+RUN mkdir -p /var/webhook/data && chown www-data:www-data /var/webhook/data
+
+VOLUME [ "/var/webhook/data" ]
