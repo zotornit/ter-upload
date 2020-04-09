@@ -1,9 +1,12 @@
 FROM php:7.4-apache
 
 COPY ./webhook /var/www/html
+COPY ./docker-php-entrypoint /usr/local/bin/
 
 ENV WH_WORK_DIR  "/var/webhook/data"
 
 RUN mkdir -p /var/webhook/data && chown www-data:www-data /var/webhook/data
 
 VOLUME [ "/var/webhook/data" ]
+
+EXPOSE 80
